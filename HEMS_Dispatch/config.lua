@@ -1,4 +1,4 @@
--- HEMS Dispatch v1.0.17 configuration
+-- HEMS Dispatch v1.0.181 configuration
 -- This file can be reloaded from Plugins > HEMS Dispatch > Reload configuration.
 
 return {
@@ -100,7 +100,8 @@ return {
     },
 
     moving_map = {
-        -- Floating OpenStreetMap moving map (North-Up). Follow Aircraft keeps the
+        -- Floating OpenStreetMap Moving Map: North-Up by default, with an
+        -- in-map button to toggle Heading-Up. Follow Aircraft keeps the
         -- helicopter centered; manual panning disables Follow until recentered.
         auto_open_on_new_mission = true,
         window_width = 620,
@@ -115,6 +116,9 @@ return {
         -- and all tile-management work are throttled independently.
         nav_update_hz = 10,
         info_update_hz = 1,
+        -- Heading-Up orientation updates at 5 Hz (0.2 s). Adjustable independently
+        -- from the heading prediction (nav_update_hz); effective range 1..20 Hz.
+        heading_up_update_hz = 5,
         tile_prepare_interval_seconds = 0.5,
 
         -- Flight-track sampling. A position is considered at most every 0.5 s and
@@ -122,13 +126,13 @@ return {
         track_interval_seconds = 0.5,
         track_min_distance_m = 3.0,
 
-        -- Grey dashed heading extension: projected travel distance in 120 s
+        -- Black dashed heading extension: projected travel distance in 120 s
         -- at the current groundspeed, independent of any Direct-To route.
         heading_prediction_seconds = 120,
 
         -- OpenStreetMap standard tile server. Keep attribution visible in the map.
         tile_url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        user_agent = "HEMS-Dispatch/1.0.17 (X-Plane 12; FlyWithLua NG+)",
+        user_agent = "HEMS-Dispatch/1.0.181 (X-Plane 12; FlyWithLua NG+)",
 
         -- curl is included with current Windows versions and commonly available on
         -- macOS/Linux. Downloads run asynchronously so X-Plane is not blocked.
@@ -151,7 +155,7 @@ return {
 
         -- Public OpenStreetMap Overpass API endpoint used for hospital POIs.
         overpass_url = "https://overpass-api.de/api/interpreter",
-        user_agent = "HEMS-Dispatch/1.0.17 (X-Plane 12; FlyWithLua NG+)",
+        user_agent = "HEMS-Dispatch/1.0.181 (X-Plane 12; FlyWithLua NG+)",
 
         curl_executable = (SYSTEM == "IBM") and "curl.exe" or "curl",
         connect_timeout_seconds = 5,

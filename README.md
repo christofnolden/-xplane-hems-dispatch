@@ -1,6 +1,6 @@
 # HEMS Dispatch for X-Plane 12
 
-**Version:** 1.0.17
+**Version:** 1.0.181
 
 HEMS Dispatch generates random HEMS missions for X-Plane 12. Mission locations are derived from the installed **SimHeaven X-World Europe road network**, while emergency vehicles are loaded from **RescueX_Lib** and placed along the actual road geometry.
 
@@ -14,9 +14,9 @@ HEMS Dispatch generates random HEMS missions for X-Plane 12. Mission locations a
 - Terrain, water and slope validation for generated mission scenes
 - Configurable combinations of `RTW`, `NEF`, `FIRE` and `POLICE`
 - Random crashed vehicles for traffic accidents
-- **Integrated OpenStreetMap Moving Map** with a responsive, scrollbar-free layout
+- **Integrated OpenStreetMap Moving Map** with a responsive, scrollbar-free layout and selectable **North Up / Heading Up** orientation
 - **Persistent flight track** showing the actually flown route across flights/reloads until manually reset
-- **Grey dashed heading prediction** from the aircraft position, extending approximately two minutes of travel at the current groundspeed
+- **Black dashed heading prediction** from the aircraft position, extending approximately two minutes of travel at the current groundspeed
 - **Red Direct-To navigation** with a fixed route start for active missions, the saved home base, and selected hospitals
 - **Persistent Base Position** with a one-click **Direct to base** function in the Moving Map
 - **Hospital Direct-To** with nearby OpenStreetMap hospitals sorted by distance, initially within 50 km and optionally extended to 100 km
@@ -104,12 +104,15 @@ These commands can be assigned to keyboard keys, joystick buttons or VR controll
 
 ## Moving Map
 
-The integrated Moving Map uses OpenStreetMap tiles and works **North-Up**. The interface is responsive: the map automatically uses the remaining window area when the floating window is resized, without a separate scrolling workspace.
+The integrated Moving Map uses OpenStreetMap tiles and starts in **North Up** mode. Use the compass icon to toggle **Heading Up**: the map tiles and all geographic overlays rotate with the helicopter's heading, keeping the direction of flight at the top of the map. The aircraft symbol remains pointed approximately upwards. Map orientation refreshes at **5 Hz (every 0.2 seconds)** by default (`moving_map.heading_up_update_hz = 5`); the separate heading prediction retains its faster navigation update rate. Switching back immediately restores North Up. This does not change the flight track, Direct-To start positions or navigation calculations.
+
+The interface is responsive: the map automatically uses the remaining window area when the floating window is resized, without a separate scrolling workspace.
 
 The compact toolbar provides:
 
 - `-` / `+` — zoom out / in
 - Navigation icon — center the map on the helicopter and enable **Follow Aircraft**
+- Compass icon — toggle **North Up / Heading Up** (highlighted when Heading Up is active)
 - Reset icon — clear the recorded flight track
 - Home icon — toggle **Direct to base** using the saved Base Position
 - Bullseye icon — **Direct to Active mission**; replace the current Direct-To and capture the helicopter's current position as a new fixed mission-route start
@@ -117,7 +120,7 @@ The compact toolbar provides:
 - **New Mission** — create a mission directly from the Moving Map
 - **End Mission** — remove the active mission
 
-Drag the map with the left mouse button to freely move the map; this automatically disables Follow Aircraft. The helicopter position is shown live and the active mission is marked as the destination.
+Drag the map with the left mouse button to freely move the map in either orientation; this automatically disables Follow Aircraft. The helicopter position is shown live and the active mission is marked as the destination. Heading Up also works while freely panning the map. A rotated map requires the FlyWithLua ImGui `DrawList_AddImageQuad` binding; if unavailable, HEMS Dispatch keeps the safe North Up display.
 
 The **Direct-To line is red (`#ff0000`)**. For Mission, Base and Hospital Direct-To routes, the helicopter position is captured once when the Direct-To is set and becomes the **fixed start point** of that route. The line therefore remains anchored to that position while the helicopter, Moving Map and orange flight track continue to move normally. Bearing, distance, groundspeed and ETA in the status overlay remain live values based on the helicopter's current position.
 
@@ -131,7 +134,7 @@ The Base Position is stored in:
 HEMS_Dispatch/output/base_position.dat
 ```
 
-The **grey dashed heading prediction** starts at the current aircraft position, follows the aircraft's current heading (not necessarily its actual ground track) and has a length corresponding to **120 seconds at the current groundspeed**. It updates with heading, speed and position; unlike a Direct-To route, it is not a stored route. Its thin line remains visible independently of mission selection.
+The **black dashed heading prediction** starts at the current aircraft position, follows the aircraft's current heading (not necessarily its actual ground track) and has a length corresponding to **120 seconds at the current groundspeed**. It updates with heading, speed and position; unlike a Direct-To route, it is not a stored route. Its thin line remains visible independently of mission selection.
 
 The **flight track is orange (`#ffa500`)** and records the actually flown route. By default, a new track point is considered every **0.5 seconds** and stored once the aircraft has moved at least **3 meters**. The track continues recording while the Moving Map window is closed and is persisted across X-Plane/FlyWithLua reloads and new flights until it is manually reset with the existing track-reset button.
 
@@ -258,7 +261,7 @@ SimHeaven X-World Europe, RescueX_Lib, FlyWithLua NG+ and OpenStreetMap are sepa
 
 # HEMS Dispatch für X-Plane 12
 
-**Version:** 1.0.17
+**Version:** 1.0.181
 
 HEMS Dispatch erzeugt zufällige HEMS-Einsätze für X-Plane 12. Die Einsatzorte werden aus dem installierten **SimHeaven X-World Europe Straßennetz** abgeleitet. Einsatzfahrzeuge werden aus **RescueX_Lib** geladen und entlang des tatsächlichen Straßenverlaufs platziert.
 
@@ -272,9 +275,9 @@ HEMS Dispatch erzeugt zufällige HEMS-Einsätze für X-Plane 12. Die Einsatzorte
 - Terrain-, Wasser- und Neigungsprüfung für erzeugte Einsatzszenen
 - Konfigurierbare Kombinationen aus `RTW`, `NEF`, `FIRE` und `POLICE`
 - Zufällige Unfallfahrzeuge bei Verkehrsunfällen
-- **Integrierte OpenStreetMap Moving Map** mit responsivem, scrollbar-freiem Layout
+- **Integrierte OpenStreetMap Moving Map** mit responsivem, scrollbar-freiem Layout und umschaltbarer **North Up / Heading Up**-Ausrichtung
 - **Persistente Flugspur** der tatsächlich geflogenen Strecke über neue Flüge/Reloads hinweg bis zum manuellen Zurücksetzen
-- **Grau gestrichelte Heading-Prognose** ab der aktuellen Hubschrauberposition über rund zwei Minuten Flugstrecke anhand der momentanen Groundspeed
+- **Schwarz gestrichelte Heading-Prognose** ab der aktuellen Hubschrauberposition über rund zwei Minuten Flugstrecke anhand der momentanen Groundspeed
 - **Rote Direct-To-Navigation** mit festem Routenstart zur aktiven Einsatzstelle, zur gespeicherten Heimatbasis und zu ausgewählten Krankenhäusern
 - **Persistente Base Position** mit **Direct to base** über einen Haus-Button in der Moving Map
 - **Hospital Direct-To** mit Krankenhäusern aus OpenStreetMap, nach Entfernung sortiert; zunächst 50 km, optional erweiterbar auf 100 km
@@ -364,12 +367,15 @@ Die Commands können auf Tastatur, Joystick oder VR-Controller gelegt werden. `h
 
 ## Moving Map
 
-Die integrierte Moving Map verwendet OpenStreetMap-Kacheln und arbeitet **North-Up**. Die Oberfläche ist responsiv: Beim Ändern der Fenstergröße nutzt die Karte automatisch die verbleibende Fläche, ohne einen separaten scrollbaren Arbeitsbereich.
+Die integrierte Moving Map verwendet OpenStreetMap-Kacheln und startet standardmäßig in **North Up**. Über das Kompass-Symbol kann jederzeit auf **Heading Up** umgeschaltet werden: Die Kartenkacheln und sämtliche geografischen Markierungen/Linien drehen sich mit dem Heading des Hubschraubers, sodass die Flugrichtung oben liegt. Das Hubschraubersymbol zeigt dabei ungefähr nach oben. Die Kartenausrichtung wird standardmäßig mit **5 Hz (alle 0,2 Sekunden)** aktualisiert (`moving_map.heading_up_update_hz = 5`); die Heading-Prognose behält ihre schnellere Navigationsaktualisierung. Ein erneuter Klick aktiviert sofort wieder North Up. Flugspur, feste Direct-To-Startpositionen und Navigationsberechnungen bleiben unverändert.
+
+Die Oberfläche ist responsiv: Beim Ändern der Fenstergröße nutzt die Karte automatisch die verbleibende Fläche, ohne einen separaten scrollbaren Arbeitsbereich.
 
 Die kompakte Toolbar bietet:
 
 - `-` / `+` — heraus- / hineinzoomen
 - Navigationssymbol — Karte auf den Hubschrauber zentrieren und **Follow Aircraft** aktivieren
+- Kompass-Symbol — zwischen **North Up / Heading Up** umschalten (aktiv in Heading Up)
 - Reset-Symbol — aufgezeichnete Flugspur zurücksetzen
 - Haus-Symbol — **Direct to base** zur gespeicherten Base Position ein-/ausschalten
 - Fadenkreuz-/Zielsymbol — **Direct to Active mission**; die aktuelle Direct-To-Route ersetzen und die aktuelle Heli-Position als neuen festen Startpunkt der Einsatzroute übernehmen
@@ -377,7 +383,7 @@ Die kompakte Toolbar bietet:
 - **New Mission** — direkt aus der Moving Map einen Einsatz erzeugen
 - **End Mission** — aktiven Einsatz entfernen
 
-Die Karte lässt sich mit gedrückter linker Maustaste frei verschieben; dadurch wird Follow Aircraft automatisch deaktiviert. Die aktuelle Hubschrauberposition wird live dargestellt und die aktive Einsatzstelle als Ziel markiert.
+Die Karte lässt sich in beiden Ausrichtungen mit gedrückter linker Maustaste frei verschieben; dadurch wird Follow Aircraft automatisch deaktiviert. Heading Up funktioniert auch bei freier Kartenverschiebung. Die aktuelle Hubschrauberposition wird live dargestellt und die aktive Einsatzstelle als Ziel markiert. Für gedrehte Kartentexturen wird die ImGui-Funktion `DrawList_AddImageQuad` benötigt; fehlt sie in einer FlyWithLua-Version, bleibt die sichere North-Up-Ansicht aktiv.
 
 Die **Direct-To-Linie ist rot (`#ff0000`)**. Für Mission-, Base- und Hospital-Direct-To wird die Hubschrauberposition beim Setzen der jeweiligen Route einmalig gespeichert und bildet anschließend den **festen Startpunkt** dieser Route. Die Linie bleibt damit an dieser Position verankert, während sich Hubschrauberposition, Moving Map und orange Flugspur weiterhin normal aktualisieren. Bearing, Distanz, Groundspeed und ETA im Status-Overlay bleiben Live-Werte auf Basis der aktuellen Hubschrauberposition.
 
@@ -391,7 +397,7 @@ Die Base Position wird lokal gespeichert unter:
 HEMS_Dispatch/output/base_position.dat
 ```
 
-Die **grau gestrichelte Heading-Prognose** beginnt an der aktuellen Hubschrauberposition und zeigt in Richtung des aktuellen Headings (nicht zwingend der tatsächlichen Bewegung über Grund). Ihre Länge entspricht **120 Sekunden Flugstrecke mit der momentanen Groundspeed**. Sie folgt der aktuellen Position, dem Heading und der Geschwindigkeit, unabhängig von der gewählten Direct-To-Route.
+Die **schwarz gestrichelte Heading-Prognose** beginnt an der aktuellen Hubschrauberposition und zeigt in Richtung des aktuellen Headings (nicht zwingend der tatsächlichen Bewegung über Grund). Ihre Länge entspricht **120 Sekunden Flugstrecke mit der momentanen Groundspeed**. Sie folgt der aktuellen Position, dem Heading und der Geschwindigkeit, unabhängig von der gewählten Direct-To-Route.
 
 Die **Flugspur ist orange (`#ffa500`)** und zeigt die tatsächlich geflogene Strecke. Standardmäßig wird alle **0,5 Sekunden** ein möglicher Trackpunkt geprüft und gespeichert, sobald sich der Hubschrauber mindestens **3 Meter** bewegt hat. Das Tracking läuft auch bei geschlossenem Moving-Map-Fenster weiter und wird über X-Plane-/FlyWithLua-Reloads sowie neue Flüge hinweg gespeichert, bis es über den vorhandenen Track-Reset-Button manuell zurückgesetzt wird.
 

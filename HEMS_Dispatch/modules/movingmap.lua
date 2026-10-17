@@ -3,6 +3,14 @@ local M = {}
 M.window = nil
 M.zoom = 14
 M.follow_aircraft = true
+-- North-Up by default. Heading-Up rotates the OSM imagery and all world overlays
+-- together; screen UI elements (toolbar/status) always remain upright.
+M.heading_up = false
+M.map_rotation_deg = 0
+M.map_rotation_cos = 1
+M.map_rotation_sin = 0
+M.last_rotation_update = -1000
+M.quad_image_mode = nil
 M.map_center_lat = nil
 M.map_center_lon = nil
 M.base_position = nil
@@ -147,6 +155,52 @@ local function update_nav(force)
         M.nav.distance_nm = nil
         M.nav.eta_seconds = nil
     end
+end
+
+-- Navigation and the heading prediction use nav_update_hz (10 Hz by default).
+-- Heading-Up orientation is sampled separately at 5 Hz by default (0.2 s).
+-- This does not change heading prediction or flight-track sampling rates.
+local function update_map_rotation(force)
+    if not M.heading_up then return end
+    local now = monotonic_seconds()
+    local hz = tonumber(cfg().heading_up_update_hz) or 5
+    if hz ~= hz or hz < 1 then hz = 5 end
+    if hz > 20 then hz = 20 end
+    local interval = 1.0 / hz
+    if not force and now - M.last_rotation_update < interval then return end
+    if not M.nav.valid then return end
+    M.last_rotation_update = now
+
+    local degrees = (tonumber(M.nav.heading_deg) or 0) % 360
+    if degrees ~= degrees then return end
+    if math.abs(degrees - M.map_rotation_deg) < 0.001 then return end
+    M.map_rotation_deg = degrees
+    local radians = math.rad(degrees)
+    M.map_rotation_cos = math.cos(radians)
+    M.map_rotation_sin = math.sin(radians)
+    M.track_render_cache = nil
+end
+
+local function set_heading_up(enabled)
+    if enabled and type(imgui.DrawList_AddImageQuad) ~= "function" then
+        HEMS.status_message = "Heading Up unavailable: rotated images are not supported by this FlyWithLua version."
+        HEMS.log("Moving Map: " .. HEMS.status_message)
+        return false
+    end
+    M.heading_up = enabled and true or false
+    M.last_rotation_update = -1000
+    if M.heading_up then
+        update_nav(true)
+        update_map_rotation(true)
+    else
+        M.map_rotation_deg = 0
+        M.map_rotation_cos = 1
+        M.map_rotation_sin = 0
+    end
+    M.track_render_cache = nil
+    M.last_tile_prepare = -1000
+    HEMS.log("Moving Map orientation: " .. (M.heading_up and "Heading Up" or "North Up"))
+    return true
 end
 
 local function update_info(force)
@@ -588,13 +642,22 @@ local function format_eta(seconds)
     return string.format("%02d:%02d", minutes, secs)
 end
 
+-- Rotates screen/world offsets clockwise in world coordinates by -heading:
+-- when the aircraft heads east (090), east is at the top of the map.
+local function rotate_map_offset(dx, dy)
+    if M.map_rotation_deg == 0 then return dx, dy end
+    return dx * M.map_rotation_cos + dy * M.map_rotation_sin,
+           -dx * M.map_rotation_sin + dy * M.map_rotation_cos
+end
+
 local function map_point(lat, lon, center_world_x, center_world_y, zoom, canvas_x, canvas_y, width, height)
     local wx, wy = HEMS.osm.latlon_to_world_px(lat, lon, zoom)
     local dx = wx - center_world_x
     local world_width = HEMS.osm.TILE_SIZE * (2 ^ zoom)
     if dx > world_width * 0.5 then dx = dx - world_width end
     if dx < -world_width * 0.5 then dx = dx + world_width end
-    return canvas_x + width * 0.5 + dx, canvas_y + height * 0.5 + (wy - center_world_y)
+    local rx, ry = rotate_map_offset(dx, wy - center_world_y)
+    return canvas_x + width * 0.5 + rx, canvas_y + height * 0.5 + ry
 end
 
 local function point_in_rect(x, y, left, top, right, bottom)
@@ -659,14 +722,73 @@ local function draw_target(x, y)
     imgui.DrawList_AddLine(x, y - 11, x, y + 11, 0xFFFFFFFF, 2.0)
 end
 
-local function draw_tiles(canvas_x, canvas_y, width, height, tiles)
+-- FlyWithLua renders OSM tiles with imgui.Image in North-Up. Heading-Up
+-- needs ImDrawList::AddImageQuad, which rotates the actual tile textures (not
+-- just the flight-path overlays). Support alternative binding signatures and
+-- fall back safely to North-Up if the host cannot render quads.
+local function draw_rotated_tile(texture, x, y, size, canvas_cx, canvas_cy)
+    local function corner(px, py)
+        local rx, ry = rotate_map_offset(px - canvas_cx, py - canvas_cy)
+        return canvas_cx + rx, canvas_cy + ry
+    end
+    local ax, ay = corner(x, y)
+    local bx, by = corner(x + size, y)
+    local cx, cy = corner(x + size, y + size)
+    local dx, dy = corner(x, y + size)
+    local quad = imgui.DrawList_AddImageQuad
+
+    local function call_quad(mode)
+        if mode == 1 then
+            return quad(texture, ax, ay, bx, by, cx, cy, dx, dy)
+        elseif mode == 2 then
+            return quad(texture, ax, ay, bx, by, cx, cy, dx, dy,
+                0, 0, 1, 0, 1, 1, 0, 1)
+        else
+            return quad(texture, ax, ay, bx, by, cx, cy, dx, dy,
+                0, 0, 1, 0, 1, 1, 0, 1, 0xFFFFFFFF)
+        end
+    end
+
+    if M.quad_image_mode then
+        return pcall(call_quad, M.quad_image_mode)
+    end
+    -- Probe once on the first tile; then render directly on subsequent frames.
+    for _, mode in ipairs({ 1, 2, 3 }) do
+        local ok = pcall(call_quad, mode)
+        if ok then
+            M.quad_image_mode = mode
+            return true
+        end
+    end
+    return false, "ImGui DrawList_AddImageQuad signature is unsupported"
+end
+
+local function draw_tiles(canvas_x, canvas_y, width, height, tiles, coverage_size)
     if not imgui.SetCursorScreenPos or not imgui.Image then return false end
     local any = false
+    local rotated = M.heading_up and M.map_rotation_deg ~= 0
+    local shift_x = coverage_size and (width - coverage_size) * 0.5 or 0
+    local shift_y = coverage_size and (height - coverage_size) * 0.5 or 0
+    local center_x, center_y = canvas_x + width * 0.5, canvas_y + height * 0.5
     for _, tile in ipairs(tiles or {}) do
         local texture = HEMS.osm.texture_for(tile.z, tile.x, tile.y)
         if texture then
-            imgui.SetCursorScreenPos(canvas_x + tile.screen_x, canvas_y + tile.screen_y)
-            imgui.Image(texture, HEMS.osm.TILE_SIZE, HEMS.osm.TILE_SIZE)
+            local x, y = canvas_x + shift_x + tile.screen_x, canvas_y + shift_y + tile.screen_y
+            if rotated then
+                local ok, err = draw_rotated_tile(texture, x, y, HEMS.osm.TILE_SIZE, center_x, center_y)
+                if not ok then
+                    -- Failure must never propagate into the FlyWithLua draw loop.
+                    HEMS.status_message = "Heading Up unavailable: " .. tostring(err)
+                    HEMS.log("Moving Map: " .. HEMS.status_message)
+                    set_heading_up(false)
+                    -- Continue with the original reliable North-Up tile renderer.
+                    rotated = false
+                end
+            end
+            if not rotated then
+                imgui.SetCursorScreenPos(x, y)
+                imgui.Image(texture, HEMS.osm.TILE_SIZE, HEMS.osm.TILE_SIZE)
+            end
             any = true
         end
     end
@@ -686,20 +808,26 @@ local function prepare_map(width, height)
     local center_lat, center_lon = current_map_center()
     if not center_lat or not center_lon then return {}, 0, 0 end
 
-    local tiles, center_x, center_y = HEMS.osm.visible_tiles(center_lat, center_lon, M.zoom, width, height)
+    -- A diagonal-size square covers the entire canvas at every heading and
+    -- prevents uncovered map corners during turns. Tiles remain standard 256px
+    -- images, only their screen quads are rotated.
+    local coverage = M.heading_up and math.ceil(math.sqrt(width * width + height * height)) or nil
+    local coverage_width, coverage_height = coverage or width, coverage or height
+    local tiles, center_x, center_y = HEMS.osm.visible_tiles(
+        center_lat, center_lon, M.zoom, coverage_width, coverage_height)
     M.last_visible_tiles = tiles
 
     local now = monotonic_seconds()
     local interval = tonumber(cfg().tile_prepare_interval_seconds) or 0.5
     if now - M.last_tile_prepare >= interval
-        or width ~= M.last_canvas_width
-        or height ~= M.last_canvas_height then
+        or coverage_width ~= M.last_canvas_width
+        or coverage_height ~= M.last_canvas_height then
         M.last_tile_prepare = now
-        M.last_canvas_width = width
-        M.last_canvas_height = height
+        M.last_canvas_width = coverage_width
+        M.last_canvas_height = coverage_height
         HEMS.osm.prepare_tiles(tiles)
     end
-    return tiles, center_x, center_y
+    return tiles, center_x, center_y, coverage
 end
 
 local function unpack_vec2(a, b)
@@ -789,6 +917,11 @@ local function draw_icon_button(id, icon, tooltip_text, active_state)
     elseif icon == "follow" then
         imgui.DrawList_AddTriangleFilled(cx + 6, cy - 7, cx + 2, cy + 7, cx - 7, cy + 2, color)
         imgui.DrawList_AddLine(cx + 1, cy + 2, cx - 5, cy + 7, color, 1.5)
+    elseif icon == "orientation" then
+        -- Small compass glyph: active/green when map rotation is enabled.
+        imgui.DrawList_AddCircle(cx, cy, 9, color, 20, 1.3)
+        imgui.DrawList_AddTriangleFilled(cx, cy - 7, cx - 4, cy + 4, cx + 4, cy + 4, color)
+        imgui.DrawList_AddLine(cx, cy + 4, cx, cy + 7, color, 1.5)
     elseif icon == "reset" then
         imgui.DrawList_AddCircle(cx, cy, 7, color, 20, 1.8)
         imgui.DrawList_AddTriangleFilled(cx + 5, cy - 7, cx + 10, cy - 6, cx + 7, cy - 2, color)
@@ -887,7 +1020,7 @@ end
 local function draw_toolbar()
     local available_w = select(1, content_region_avail())
     local x, y = imgui.GetCursorScreenPos()
-    local two_rows = available_w < 535
+    local two_rows = available_w < 575
     local toolbar_h = two_rows and 68 or 38
     -- FlyWithLua's child canvas keeps a small internal right-side inset even
     -- when its scrollbars are visually hidden. Match that visible canvas width
@@ -919,6 +1052,13 @@ local function draw_toolbar()
     ) then
         set_follow_aircraft(true)
         M.last_tile_prepare = -1000
+    end
+    imgui.SameLine()
+    local orientation_tooltip = M.heading_up
+        and "Heading Up: active (click for North Up)"
+        or "North Up: active (click for Heading Up)"
+    if draw_icon_button("orientation", "orientation", orientation_tooltip, M.heading_up) then
+        set_heading_up(not M.heading_up)
     end
     imgui.SameLine()
     if draw_icon_button("track_reset", "reset", "Reset flight track", false) then
@@ -1001,10 +1141,14 @@ local function handle_map_pan()
     local center_lat, center_lon = current_map_center()
     if not center_lat or not center_lon then return end
 
-    -- Dragging the map to the right/down moves the geographic center west/north.
+    -- Convert cursor drag from rotated screen space back to North-Up world
+    -- coordinates before updating the center. This also preserves free panning
+    -- while Heading-Up is active.
+    local world_dx = dx * M.map_rotation_cos - dy * M.map_rotation_sin
+    local world_dy = dx * M.map_rotation_sin + dy * M.map_rotation_cos
     local center_x, center_y = HEMS.osm.latlon_to_world_px(center_lat, center_lon, M.zoom)
-    center_x = center_x - dx
-    center_y = center_y - dy
+    center_x = center_x - world_dx
+    center_y = center_y - world_dy
     M.map_center_lat, M.map_center_lon = HEMS.osm.world_px_to_latlon(center_x, center_y, M.zoom)
     M.follow_aircraft = false
     M.track_render_cache = nil
@@ -1019,6 +1163,7 @@ local function build_track_render_cache(center_world_x, center_world_y, canvas_x
     if cache
         and cache.revision == M.track_revision
         and cache.zoom == M.zoom
+        and cache.rotation_deg == M.map_rotation_deg
         and cache.center_world_x == center_world_x
         and cache.center_world_y == center_world_y
         and cache.canvas_x == canvas_x
@@ -1054,6 +1199,7 @@ local function build_track_render_cache(center_world_x, center_world_y, canvas_x
     M.track_render_cache = {
         revision = M.track_revision,
         zoom = M.zoom,
+        rotation_deg = M.map_rotation_deg,
         center_world_x = center_world_x,
         center_world_y = center_world_y,
         canvas_x = canvas_x,
@@ -1119,8 +1265,8 @@ local function draw_heading_prediction(center_world_x, center_world_y, canvas_x,
     if length < 1 then return end
 
     local ux, uy = dx / length, dy / length
-    local dash, gap = 7.0, 5.0
-    local color, thickness = 0xFF555555, 2.0 -- neutral grey, thinner than track (2.5) / Direct-To (3)
+    local dash, gap = 9.0, 7.0
+    local color, thickness = 0xFF000000, 1.5 -- black, thinner than track (2.5) / Direct-To (3)
     local pos = 0
     while pos < length do
         local finish = math.min(length, pos + dash)
@@ -1161,8 +1307,8 @@ local function draw_map_canvas(width, height)
         return
     end
 
-    local tiles, center_world_x, center_world_y = prepare_map(width, height)
-    local map_drawn = draw_tiles(canvas_x, canvas_y, width, height, tiles)
+    local tiles, center_world_x, center_world_y, coverage = prepare_map(width, height)
+    local map_drawn = draw_tiles(canvas_x, canvas_y, width, height, tiles, coverage)
 
     if not map_drawn then
         imgui.SetCursorScreenPos(canvas_x + 12, canvas_y + 12)
@@ -1227,7 +1373,9 @@ local function draw_map_canvas(width, height)
     end
 
     if point_in_rect(aircraft_x, aircraft_y, canvas_x - 16, canvas_y - 16, right + 16, bottom + 16) then
-        draw_aircraft(aircraft_x, aircraft_y, M.nav.heading_deg)
+        -- In Heading-Up the map rotates beneath the helicopter: its displayed
+        -- heading is therefore close to straight up rather than turning twice.
+        draw_aircraft(aircraft_x, aircraft_y, (M.nav.heading_deg - M.map_rotation_deg) % 360)
     end
 
     -- Subtle frame around the map canvas.
@@ -1251,6 +1399,7 @@ end
 
 function M.build_window(wnd, x, y)
     update_nav(false)
+    update_map_rotation(false)
     update_info(false)
 
     local min_zoom = tonumber(cfg().min_zoom) or 10

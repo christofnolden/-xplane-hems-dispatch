@@ -2,6 +2,26 @@
 
 All notable changes to HEMS Dispatch are documented in this file.
 
+## 1.0.181 — 2026-10-17
+
+### Changed
+- Replaced `moving_map.heading_up_update_interval_seconds` with `moving_map.heading_up_update_hz` (default: `5` Hz / `0.2` s) for consistent frequency-based configuration. Heading-Up orientation updates remain independent of the 10 Hz navigation/heading-prediction calculations; values are bounded to 1–20 Hz at runtime.
+- Changed the dashed heading prediction from grey (`#999999`) to black (`#000000`) for improved contrast at higher zoom levels. Its thickness remains `1.5` px.
+- Updated README (English/German), version metadata and OSM/Overpass user agents to 1.0.181.
+
+## 1.0.18 — 2026-10-17
+
+### Added
+- Added a **North Up / Heading Up** compass toggle to the Moving Map toolbar, with **North Up** remaining the default.
+- **Heading Up** rotates OpenStreetMap tile textures, the persistent orange flight track, red Direct-To routes, targets and the grey heading prediction together. The helicopter symbol stays oriented approximately towards the top of the map.
+- Added `moving_map.heading_up_update_interval_seconds` (default: `0.5`) to control how often map orientation follows aircraft heading, independently of the existing 10 Hz navigation and heading-prediction updates.
+
+### Improved
+- Moving Map panning now accounts for map rotation, keeping cursor dragging natural in both orientation modes.
+- Preloads a diagonal-sized tile coverage area while Heading Up is active to avoid missing map corners as the map rotates.
+- Includes a safe North-Up fallback when the FlyWithLua ImGui image-quad API is unavailable; retains the existing Direct-To/track/nav behavior.
+- Updated README (English/German), version metadata and OSM/Overpass user agents to 1.0.18.
+
 ## 1.0.17 — 2026-10-10
 
 ### Added
